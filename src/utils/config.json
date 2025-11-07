@@ -1,0 +1,13 @@
+{
+  "ui": {
+    "handle": {
+      "size": 12,
+      "border": "2px solid #1c1f26",
+      "radius": "9999px"
+    },
+    "link": {
+      "thickness": 2,
+      "color": "#38bdf8"
+    }
+  }
+}
