@@ -6,6 +6,7 @@ let nextId = 1;
 
 // Save workspace to a user-selected file
 async function saveFileDialog() {
+  clearWorkspace();
   try {
     const path = await save({
       defaultPath: 'macros/my_flow.json',
@@ -21,9 +22,30 @@ async function saveFileDialog() {
   } catch (err) {
     console.error("Save dialog failed:", err);
   }
+   updateSceneFromBackend();
 }
 
+async function openFileDialog() {
+  try {
+    const path = await open({
+      multiple: false,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
 
+    if (!path) return null;
+
+    const content = await readTextFile(path);
+    const parsed = JSON.parse(content);
+
+    // Optional: validate structure
+    if (!Array.isArray(parsed)) throw new Error("Invalid macro format");
+
+    return parsed; // return to frontend for scene reconstruction
+  } catch (err) {
+    console.error("Open dialog failed:", err);
+    return null;
+  }
+}
 
 function addNode(type, data = {}, position = { x: 100, y: 100 }) {
   const id = nextId++;
@@ -142,5 +164,6 @@ export default {
   getNode,
   getAllNodes,
   clearWorkspace,
-  saveMacro
+  saveMacro,
+  openFileDialog
 };

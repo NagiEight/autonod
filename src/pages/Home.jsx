@@ -31,7 +31,7 @@ export default function WorkflowPage() {
     const { source, target } = params;
 
     // Backend sync
-    workspaceManager.connectNodes(source, target);
+    workspaceManager.connectNodes(parseInt(source), parseInt(target));
 
     // Frontend update
     setEdges((eds) =>
