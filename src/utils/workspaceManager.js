@@ -1,19 +1,38 @@
-// workspaceManager.js
+import { invoke } from '@tauri-apps/api/core';
+import { save } from '@tauri-apps/plugin-dialog';
 
 let nodes = [];
-let nextId = 1; // Start from 1 and increment
+let nextId = 1;
 
-// Add a new node
-function addNode(type, data = {}) {
+// Save workspace to a user-selected file
+async function saveFileDialog() {
+  try {
+    const path = await save({
+      defaultPath: 'macros/my_flow.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+
+    if (path) {
+      const content = JSON.stringify(nodes, null, 2); // frontend handles formatting
+      const message = await invoke('save_macro', { path, content });
+      console.log("Saved to:", path);
+      console.log(message);
+    }
+  } catch (err) {
+    console.error("Save dialog failed:", err);
+  }
+}
+
+
+
+function addNode(type, data = {}, position = { x: 100, y: 100 }) {
   const id = nextId++;
   const newNode = {
     id,
     type,
     data,
-    connections: {
-      in: [],
-      out: []
-    }
+    position,
+    connections: { in: [], out: [] }
   };
   nodes.push(newNode);
   return id;
@@ -62,26 +81,37 @@ function disconnectNodes(fromId, toId) {
   return false;
 }
 
-// Export workspace as JSON
+// Export workspace as JSON string
 function exportWorkspace() {
   return JSON.stringify(nodes, null, 2);
 }
 
-// Import workspace from JSON
+// Import workspace from JSON string
 function importWorkspace(json) {
   try {
     const parsed = JSON.parse(json);
     if (Array.isArray(parsed)) {
       nodes = parsed;
-      // Update nextId to avoid collisions
-      const maxId = Math.max(0, ...nodes.map(n => n.id));
-      nextId = maxId + 1;
+      nextId = Math.max(0, ...nodes.map(n => n.id)) + 1;
       return true;
     }
   } catch (e) {
     console.error("Invalid workspace JSON:", e);
   }
   return false;
+}
+
+// Save workspace to disk via Tauri
+async function saveMacro(path = 'macros/my_flow.json') {
+  try {
+    const message = await invoke('save_macro', {
+      path,
+      nodes
+    });
+    console.log(message);
+  } catch (err) {
+    console.error("Failed to save macro:", err);
+  }
 }
 
 // Get node by ID
@@ -100,8 +130,8 @@ function clearWorkspace() {
   nextId = 1;
 }
 
-// Export functions
-module.exports = {
+export default {
+  saveFileDialog,
   addNode,
   editNode,
   removeNode,
@@ -111,5 +141,6 @@ module.exports = {
   importWorkspace,
   getNode,
   getAllNodes,
-  clearWorkspace
+  clearWorkspace,
+  saveMacro
 };
