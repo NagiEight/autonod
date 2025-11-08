@@ -5,7 +5,7 @@ const openURL = (url) => window.open(url, "_blank");
 const topBarMenu = {
   File: [
     { label: "New", action: () => workspace.clearWorkspace() },
-    { label: "Open", action: () => console.log("Open dialog") },
+    { label: "Open", action: () => workspace.loadMacroFromDialog() },
     { label: "Save", action: () => workspace.saveFileDialog() },
     // { label: "Export", action: () => console.log("Export file") },
     // { label: "Export (API)", action: () => console.log("Export via API") }

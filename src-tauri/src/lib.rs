@@ -6,9 +6,17 @@ use std::path::Path;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Node {
     id: u32,
+    #[serde(rename = "type")]
     node_type: String,
     data: serde_json::Value,
+    position: Position,
     connections: Connections,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct Position {
+    x: f32,
+    y: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -72,6 +80,7 @@ fn load_macro(path: &str) -> Result<Vec<Node>, String> {
     file.read_to_string(&mut contents)
         .map_err(|e| e.to_string())?;
     let nodes: Vec<Node> = serde_json::from_str(&contents).map_err(|e| e.to_string())?;
+    println!("{:#?}", nodes);
     Ok(nodes)
 }
 

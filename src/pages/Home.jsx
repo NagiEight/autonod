@@ -1,5 +1,5 @@
 // components/WorkflowPage.jsx
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useReducer } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -9,32 +9,28 @@ import ReactFlow, {
   addEdge,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import Node from "../components/Node";
 import TopBar from "../components/TopBar";
 import Sidebar from "../components/Sidebar";
-import { nodeSchemas } from "../utils/nodeSchemas";
 import config from "../utils/config.json";
-import workspaceManager from "../utils/workspaceManager";
+import workspace from "../utils/workspaceManager";
 
+import Node from "../components/Node";
+import { nodeSchemas } from "../utils/nodeSchemas";
 const nodeTypes = { custom: Node };
 
 export default function WorkflowPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-
-  const onNodeDragStop = (event, node) => {
-    // Update backend with new position
-    workspaceManager.editNodePosition(node.id, node.position);
-  };
+  const [, forceUpdate] = useReducer((x) => x + 1, 0);
 
   const onConnect = useCallback((params) => {
     const { source, target } = params;
 
     // Backend sync
-    workspaceManager.connectNodes(parseInt(source), parseInt(target));
+    workspace.connectNodes(parseInt(source), parseInt(target));
 
     // Frontend update
-    setEdges((eds) =>
+    setEdges((eds = []) =>
       addEdge(
         {
           ...params,
@@ -48,6 +44,19 @@ export default function WorkflowPage() {
     );
   }, []);
 
+  const handleImport = async () => {
+    const importedNodes = await workspace.loadMacroFromDialog();
+    if (!importedNodes.length) return;
+
+    workspace.clearWorkspace();
+
+    importedNodes.forEach((n) =>
+      workspace.addNode(n.type, n.data, n.position, n.connections)
+    );
+
+    updateSceneFromBackend(); // safely updates React state
+  };
+
   const handleAddNode = (type) => {
     const schema = nodeSchemas[type];
     const defaultData = Object.fromEntries(
@@ -56,7 +65,7 @@ export default function WorkflowPage() {
     const position = { x: Math.random() * 400, y: Math.random() * 400 };
 
     // Backend first
-    const backendId = workspaceManager.addNode(type, defaultData, position);
+    const backendId = workspace.addNode(type, defaultData, position);
 
     // Frontend mirror
     const newNode = {
@@ -74,7 +83,7 @@ export default function WorkflowPage() {
                 : n
             )
           );
-          workspaceManager.editNode(backendId, { [key]: value });
+          workspace.editNode(backendId, { [key]: value });
         },
       },
       position,
@@ -83,37 +92,113 @@ export default function WorkflowPage() {
     setNodes((nds) => [...nds, newNode]);
   };
 
-  function updateSceneFromBackend() {
-    const backendNodes = workspaceManager.getAllNodes();
+  // function updateSceneFromBackend() {
+  //   const backendNodes = workspaceManager.getAllNodes();
 
-    const frontendNodes = backendNodes.map((node) => {
-      const schema = nodeSchemas[node.type];
-      const defaultData = node.data;
+  //   const frontendNodes = backendNodes.map((node) => {
+  //     const schema = nodeSchemas[node.type];
+  //     const defaultData = node.data;
 
-      return {
-        id: `${node.id}`,
-        type: "custom",
-        data: {
-          label: `${schema.displayName} Node`,
-          type: node.type,
-          ...defaultData,
-          onChange: (key, value) => {
-            setNodes((nds) =>
-              nds.map((n) =>
-                n.id === node.id
-                  ? { ...n, data: { ...n.data, [key]: value } }
-                  : n
-              )
-            );
-            workspaceManager.editNode(node.id, { [key]: value });
-          },
+  //     return {
+  //       id: `${node.id}`,
+  //       type: "custom",
+  //       data: {
+  //         label: `${schema.displayName} Node`,
+  //         type: node.type,
+  //         ...defaultData,
+  //         onChange: (key, value) => {
+  //           setNodes((nds) =>
+  //             nds.map((n) =>
+  //               n.id === node.id
+  //                 ? { ...n, data: { ...n.data, [key]: value } }
+  //                 : n
+  //             )
+  //           );
+  //           workspaceManager.editNode(node.id, { [key]: value });
+  //         },
+  //       },
+  //       position: node.position || { x: 100, y: 100 }, // fallback if missing
+  //     };
+  //   });
+
+  //   setNodes(frontendNodes);
+  // }
+
+  const updateSceneFromBackend = () => {
+    const backendNodes = workspace.getAllNodes();
+
+    const frontendNodes = backendNodes.map((node) => ({
+      id: `${node.id}`,
+      type: "custom", // React Flow type
+      data: {
+        ...node.data,
+        type: node.type, // preserve original type for Node.jsx
+        label: `${node.type} Node`,
+        onChange: (key, value) => {
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === `${node.id}`
+                ? { ...n, data: { ...n.data, [key]: value } }
+                : n
+            )
+          );
+          workspace.editNode(node.id, { [key]: value });
         },
-        position: node.position || { x: 100, y: 100 }, // fallback if missing
-      };
-    });
+      },
+      position: node.position,
+    }));
 
     setNodes(frontendNodes);
-  }
+    setEdges([]); // clear before rebuilding
+    convertToEdges(backendNodes, setEdges); // this uses stringified IDs too
+  };
+
+  useEffect(() => {
+    workspace.setSceneUpdater(updateSceneFromBackend);
+  }, []);
+
+  const convertToFrontendNode = (node) => ({
+    id: `${node.id}`,
+    type: "custom",
+    data: {
+      ...node.data,
+      type: node.type,
+      label: `${node.type} Node`,
+      onChange: (key, value) => {
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === `${node.id}`
+              ? { ...n, data: { ...n.data, [key]: value } }
+              : n
+          )
+        );
+        workspace.editNode(node.id, { [key]: value });
+      },
+    },
+    position: node.position,
+  });
+  const convertToEdges = (nodes, setEdges) => {
+    nodes.forEach((node) => {
+      const sourceId = `${node.id}`;
+      const targets = node.connections?.out || [];
+
+      targets.forEach((targetId) => {
+        const params = {
+          source: sourceId,
+          target: `${targetId}`,
+          style: {
+            stroke: config.ui.link.color,
+            strokeWidth: config.ui.link.thickness,
+          },
+        };
+
+        console.log("Connecting:", params.source, "→", params.target);
+
+        setEdges((eds = []) => addEdge(params, eds));
+      });
+    });
+  };
+
   return (
     <div className="h-screen w-screen bg-[#1c1f26] text-gray-200 font-sans flex flex-col overflow-hidden">
       <div className="h-16 bg-zinc-800 border-b border-zinc-700">
