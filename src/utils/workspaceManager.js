@@ -4,6 +4,15 @@ import { save,open } from "@tauri-apps/plugin-dialog";
 let nodes = [];
 let nextId = 1;
 
+async function run_workflow_from_file(){
+      const path = await open({
+      multiple: false,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+  const result = await invoke("run_current_workflow", {path});
+}
+
+
 // Save workspace to a user-selected file
 async function saveFileDialog() {
   try {
@@ -40,7 +49,6 @@ export async function loadMacroFromDialog() {
 }
 
 
-
 async function openFileDialog() {
   try {
     const path = await open({
@@ -61,7 +69,12 @@ async function openFileDialog() {
   }
 }
 
-function addNode(type, data = {}, position = { x: 100, y: 100 }, connections = { in: [], out: [] }) {
+function addNode(
+  type,
+  data = {},
+  position = [100, 100],
+  connections = { inputs: [], outputs: [] }
+) {
   const id = nextId++;
   const newNode = {
     id,
@@ -73,7 +86,6 @@ function addNode(type, data = {}, position = { x: 100, y: 100 }, connections = {
   nodes.push(newNode);
   return id;
 }
-
 
 // Edit an existing node
 function editNode(id, newData) {
@@ -95,16 +107,27 @@ function removeNode(id) {
 }
 
 // Connect two nodes
-function connectNodes(fromId, toId) {
+function connectNodes(fromId, toId, type = "default") {
   const from = nodes.find((n) => n.id === fromId);
   const to = nodes.find((n) => n.id === toId);
+
   if (from && to) {
-    if (!from.connections.out.includes(toId)) from.connections.out.push(toId);
-    if (!to.connections.in.includes(fromId)) to.connections.in.push(fromId);
+    // Add output connection to "from" node
+    if (!from.connections.outputs.some((c) => c.nodeId === toId && c.type === type)) {
+      from.connections.outputs.push({ nodeId: toId, type });
+    }
+
+    // Add input connection to "to" node
+    if (!to.connections.inputs.some((c) => c.nodeId === fromId && c.type === type)) {
+      to.connections.inputs.push({ nodeId: fromId, type });
+    }
+
     return true;
   }
+
   return false;
 }
+
 
 // Disconnect two nodes
 function disconnectNodes(fromId, toId) {
@@ -167,6 +190,13 @@ function clearWorkspace() {
   nextId = 1;
 }
 
+function updateNodeField(nodeId, fieldKey, newValue) {
+  const node = nodes.find((n) => n.id === nodeId);
+  if (!node) return;
+
+  node.data[fieldKey] = newValue;
+}
+
 export default {
   saveFileDialog,
   addNode,
@@ -182,5 +212,5 @@ export default {
   saveMacro,
   openFileDialog,
   loadMacroFromDialog,
-  setSceneUpdater,
+  setSceneUpdater,run_workflow_from_file,updateNodeField
 };

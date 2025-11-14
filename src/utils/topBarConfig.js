@@ -7,22 +7,23 @@ const topBarMenu = {
     { label: "New", action: () => workspace.clearWorkspace() },
     { label: "Open", action: () => workspace.loadMacroFromDialog() },
     { label: "Save", action: () => workspace.saveFileDialog() },
-    // { label: "Export", action: () => console.log("Export file") },
-    // { label: "Export (API)", action: () => console.log("Export via API") }
+    { label: "Record new", action: () => workspace.saveFileDialog() },
+    //{ label: "Save as", action: () => console.log("Export file") },
+    //{ label: "Export (API)", action: () => console.log("Export via API") }
   ],
-  // Edit: [
-  //   { label: "Undo", action: () => console.log("Undo") },
-  //   { label: "Redo", action: () => console.log("Redo") },
-  //   { label: "Clear Workflow", action: () => workspace.clearWorkspace() },
-  //   { label: "Clipspace", action: () => console.log("Clipspace") },
-  //   { label: "Flush", action: () => console.log("Flush state") }
-  // ],
-  // View: [
-  //   { label: "Sidebar", action: () => console.log("Toggle sidebar") },
-  //   { label: "Minimap", action: () => console.log("Toggle minimap") },
-  //   { label: "Node Links", action: () => console.log("Toggle links") },
-  //   { label: "Viewport Panel", action: () => console.log("Toggle viewport") }
-  // ],
+  Edit: [
+    { label: "Undo", action: () => console.log("Undo") },
+    { label: "Redo", action: () => console.log("Redo") },
+    { label: "Clear Workflow", action: () => workspace.clearWorkspace() },
+    { label: "Clipspace", action: () => console.log("Clipspace") },
+    { label: "Flush", action: () => console.log("Flush state") }
+  ],
+  View: [
+    { label: "Sidebar", action: () => console.log("Toggle sidebar") },
+    { label: "Minimap", action: () => console.log("Toggle minimap") },
+    { label: "Node Links", action: () => console.log("Toggle links") },
+    { label: "Viewport Panel", action: () => console.log("Toggle viewport") }
+  ],
   // Theme: [
   //   { label: "Dark", action: () => console.log("Set theme: dark") },
   //   { label: "Light", action: () => console.log("Set theme: light") }

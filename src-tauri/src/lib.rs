@@ -3,15 +3,8 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::Path;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct Node {
-    id: u32,
-    #[serde(rename = "type")]
-    node_type: String,
-    data: serde_json::Value,
-    position: Position,
-    connections: Connections,
-}
+use crate::engine::runner::run_workflow_from_file;
+mod engine;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Position {
@@ -20,9 +13,34 @@ struct Position {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct Connections {
-    r#in: Vec<u32>,
-    out: Vec<u32>,
+struct Node {
+    id: u32,
+    #[serde(rename = "type")]
+    node_type: String,
+    data: serde_json::Value,
+    position: Position, // now an object { x, y }
+    connections: NodeConnections,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct NodeConnections {
+    #[serde(rename = "inputs")]
+    inputs: Vec<ConnectionDetail>,
+    #[serde(rename = "outputs")]
+    outputs: Vec<ConnectionDetail>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ConnectionDetail {
+    #[serde(rename = "nodeId")]
+    node_id: u32,
+    #[serde(rename = "type")]
+    connection_type: String,
+}
+
+#[tauri::command]
+fn run_current_workflow(path: &str) {
+    run_workflow_from_file(path);
 }
 
 #[tauri::command]
@@ -112,7 +130,8 @@ pub fn run() {
             create_macro,
             save_macro,
             load_macro,
-            list_macros
+            list_macros,
+            run_current_workflow,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
