@@ -1,3 +1,4 @@
+use core::f64;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -8,8 +9,8 @@ mod engine;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Position {
-    x: f32,
-    y: f32,
+    x: f64,
+    y: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -39,8 +40,9 @@ struct ConnectionDetail {
 }
 
 #[tauri::command]
-fn run_current_workflow(path: &str) {
-    run_workflow_from_file(path);
+async fn run_current_workflow(path: &str) -> Result<(), String> {
+    run_workflow_from_file(path).await;
+    Ok(())
 }
 
 #[tauri::command]

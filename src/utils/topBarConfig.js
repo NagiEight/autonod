@@ -12,8 +12,8 @@ const topBarMenu = {
     //{ label: "Export (API)", action: () => console.log("Export via API") }
   ],
   Edit: [
-    { label: "Undo", action: () => console.log("Undo") },
-    { label: "Redo", action: () => console.log("Redo") },
+    // { label: "Undo", action: () => console.log("Undo") },
+    // { label: "Redo", action: () => console.log("Redo") },
     { label: "Clear Workflow", action: () => workspace.clearWorkspace() },
     { label: "Clipspace", action: () => console.log("Clipspace") },
     { label: "Flush", action: () => console.log("Flush state") }

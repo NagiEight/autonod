@@ -3,7 +3,11 @@ import { save,open } from "@tauri-apps/plugin-dialog";
 
 let nodes = [];
 let nextId = 1;
+let sceneUpdater = null;
 
+export function setSceneUpdater(fn) {
+  sceneUpdater = fn;
+}
 async function run_workflow_from_file(){
       const path = await open({
       multiple: false,
@@ -13,8 +17,8 @@ async function run_workflow_from_file(){
 }
 
 
-// Save workspace to a user-selected file
 async function saveFileDialog() {
+  console.log("nodes to save:", nodes);
   try {
     const path = await save({
       defaultPath: "macros/my_flow.json",
@@ -22,8 +26,20 @@ async function saveFileDialog() {
     });
 
     if (path) {
-      const content = JSON.stringify(nodes, null, 2); // frontend handles formatting
+      // Build export structure with current positions
+      const exportNodes = nodes.map((n) => ({
+        id: n.id,
+        type: n.data.type || n.type, // keep type info
+        data: n.data,
+        position: { x: n.position.x, y: n.position.y }, // latest position
+        connections: n.connections || { inputs: [], outputs: [] },
+      }));
+
+      console.log("Saving nodes with positions:", exportNodes);
+
+      const content = JSON.stringify(exportNodes, null, 2);
       const message = await invoke("save_macro", { path, content });
+
       console.log("Saved to:", path);
       console.log(message);
     }
@@ -32,11 +48,6 @@ async function saveFileDialog() {
   }
 }
 
-let sceneUpdater = null;
-
-export function setSceneUpdater(fn) {
-  sceneUpdater = fn;
-}
 
 export async function loadMacroFromDialog() {
   const nodes = await openFileDialog();
@@ -53,21 +64,33 @@ async function openFileDialog() {
   try {
     const path = await open({
       multiple: false,
-      filters: [{ name: 'JSON', extensions: ['json'] }]
+      filters: [{ name: "JSON", extensions: ["json"] }],
     });
 
     if (!path) return null;
 
-    const nodes = await invoke('load_macro', { path });
+    const rawNodes = await invoke("load_macro", { path });
 
-    // Optional: validate structure
-    if (!Array.isArray(nodes)) throw new Error("Invalid macro format");
+    if (!Array.isArray(rawNodes)) throw new Error("Invalid macro format");
+
+    // Normalize for React Flow
+    const nodes = rawNodes.map((n) => ({
+      id: String(n.id),              // React Flow requires string IDs
+      type: n.type,
+      data: n.data || {},
+      position: n.position || { x: 0, y: 0 }, // ensure position exists
+      // If you want to keep connections, store them in data or custom field
+      connections: n.connections || {},
+    }));
+
+    console.log("Loaded nodes with positions:", nodes);
     return nodes;
   } catch (err) {
     console.error("Open dialog failed:", err);
     return null;
   }
 }
+
 
 function addNode(
   type,
@@ -84,11 +107,14 @@ function addNode(
     connections
   };
   nodes.push(newNode);
+    if (sceneUpdater) {
+    sceneUpdater();
+  }
   return id;
 }
 
 // Edit an existing node
-function editNode(id, newData) {
+function editNodeData(id, newData) {
   const node = nodes.find((n) => n.id === id);
   if (node) {
     node.data = { ...node.data, ...newData };
@@ -96,14 +122,38 @@ function editNode(id, newData) {
   }
   return false;
 }
+// Edit an existing node's position
+function editNodePosition(id, newPosition) {
+  const node = nodes.find((n) => n.id === id);
+  if (node) {
+    // Ensure we preserve floats and valid structure
+    node.position = {
+      x: Number(newPosition.x),
+      y: Number(newPosition.y),
+    };
+    return true;
+  }
+  return false;
+}
 
 // Remove a node and clean up connections
 function removeNode(id) {
+  id = parseInt(id);
+  // Filter out the node with the given id
   nodes = nodes.filter((n) => n.id !== id);
-  nodes.forEach((n) => {
-    n.connections.in = n.connections.in.filter((conn) => conn !== id);
-    n.connections.out = n.connections.out.filter((conn) => conn !== id);
-  });
+
+  // If you also track edges, remove edges connected to this node
+  if (typeof edges !== "undefined") {
+    console.log(`Removing edges connected to node ${id}`);
+    edges = edges.filter(
+      (e) => e.source !== id && e.target !== id
+    );
+  }
+    console.log(`Node ${id} removed. Remaining nodes:`, nodes);
+  // Trigger frontend refresh if updater is set
+  if (sceneUpdater) {
+    sceneUpdater();
+  }
 }
 
 // Connect two nodes
@@ -200,7 +250,7 @@ function updateNodeField(nodeId, fieldKey, newValue) {
 export default {
   saveFileDialog,
   addNode,
-  editNode,
+  editNodeData,
   removeNode,
   connectNodes,
   disconnectNodes,
@@ -212,5 +262,5 @@ export default {
   saveMacro,
   openFileDialog,
   loadMacroFromDialog,
-  setSceneUpdater,run_workflow_from_file,updateNodeField
+  setSceneUpdater,run_workflow_from_file,updateNodeField,editNodePosition
 };

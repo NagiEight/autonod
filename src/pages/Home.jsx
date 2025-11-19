@@ -1,195 +1,93 @@
 // components/WorkflowPage.jsx
-import React, { useCallback, useEffect, useReducer } from "react";
+import React, { useCallback, useEffect } from "react";
 import ReactFlow, {
   Background,
   Controls,
   MiniMap,
   useNodesState,
   useEdgesState,
-  addEdge,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
+import ContextMenu from "../components/ContextMenu";
 import TopBar from "../components/TopBar";
 import Sidebar from "../components/Sidebar";
 import Node from "../components/Node";
+import FloatingBar from "../components/FloatingBar";
 
 import config from "../utils/config.json";
 import workspace from "../utils/workspaceManager";
-import { nodeSchemas } from "../utils/nodeSchemas";
-import FloatingBar from "../components/FloatingBar";
+import { convertToFrontendNode, convertToEdges } from "../utils/nodeConversion";
+import { createConnectHandler } from "../utils/connectionHandlers";
+import {
+  createAddNodeHandler,
+  createNodeDragStopHandler,
+} from "../utils/nodeEventHandlers";
 
 const nodeTypes = { custom: Node };
 
 export default function WorkflowPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [menuState, setMenuState] = React.useState({
+    visible: false,
+    pos: null,
+    nodeId: null,
+  });
 
+  // Debugging: draw a red dot at the cursor position
+  function drawDebugDot(event) {
+    const dot = document.createElement("div");
+    dot.style.position = "absolute";
+    dot.style.width = "8px";
+    dot.style.height = "8px";
+    dot.style.borderRadius = "50%";
+    dot.style.background = "red";
+    dot.style.left = `${event.clientX}px`;
+    dot.style.top = `${event.clientY}px`;
+    dot.style.zIndex = 9999;
+
+    document.body.appendChild(dot);
+
+    // Optional: remove after a short delay
+    setTimeout(() => dot.remove(), 1000);
+  }
+
+  // Context menu handler
+  const onNodeContextMenu = useCallback((event, node) => {
+    event.preventDefault();
+    drawDebugDot(event);
+    // Get bounding box of the ReactFlow wrapper
+    const bounds = event.currentTarget.getBoundingClientRect();
+
+    // Cursor position relative to the wrapper
+    const cursorX = event.clientX;
+    const cursorY = event.clientY;
+
+    console.log("x:", cursorX, "y:", cursorY);
+    setMenuState({
+      visible: true,
+      pos: { x: cursorX, y: cursorY },
+      nodeId: node.id,
+    });
+  }, []);
+
+  // Close context menu
+  const closeMenu = () =>
+    setMenuState({ visible: false, pos: null, nodeId: null });
+
+  // Factory for field change handlers
   const createOnChange = (id) => (key, value) => {
     setNodes((nds) =>
       nds.map((n) =>
         n.id === `${id}` ? { ...n, data: { ...n.data, [key]: value } } : n
       )
     );
-    workspace.editNode(id, { [key]: value });
+    workspace.editNodeData(id, { [key]: value });
   };
 
-  //get nodes from backend
-  const _convertToFrontendNode = (node) => {
-    const schema = nodeSchemas[node.type];
-
-    // Ensure position is always an object {x, y}
-    const position =
-      typeof node.position?.x === "number" &&
-      typeof node.position?.y === "number"
-        ? node.position
-        : {
-            x: Array.isArray(node.position) ? node.position[0] : 100,
-            y: Array.isArray(node.position) ? node.position[1] : 100,
-          };
-
-    return {
-      id: `${node.id}`,
-      type: "custom",
-      data: {
-        ...node.data,
-        type: node.type,
-        label: `${schema?.displayName || node.type} Node`,
-        onChange: createOnChange(node.id),
-      },
-      position, // always {x, y}
-      connections: node.connections || { inputs: [], outputs: [] }, // preserve schema
-    };
-  };
-
-  const _convertToEdges = (nodes) => {
-    const newEdges = [];
-
-    nodes.forEach((node) => {
-      const sourceId = `${node.id}`;
-      const outputs = node.connections?.outputs || [];
-
-      outputs.forEach((conn) => {
-        newEdges.push({
-          id: `${sourceId}-${conn.nodeId}-${conn.type}`, // unique edge id
-          source: sourceId,
-          sourceHandle: conn.type, // <-- attach to the correct output handle
-          target: `${conn.nodeId}`,
-          // optionally: targetHandle if your inputs have multiple handles
-          label: conn.type,
-          style: {
-            stroke: config.ui.link.color,
-            strokeWidth: config.ui.link.thickness,
-          },
-        });
-      });
-    });
-
-    setEdges(() => newEdges);
-  };
-
-  //get changes from backend and update to frontend
-  const updateSceneFromBackend = () => {
-    const backendNodes = workspace.getAllNodes();
-    const frontendNodes = backendNodes.map(_convertToFrontendNode);
-
-    setNodes(frontendNodes);
-    setEdges([]); // clear before rebuilding
-    _convertToEdges(backendNodes);
-  };
-
-  const onConnect = useCallback((params) => {
-    const { source, target, sourceHandle, targetHandle } = params;
-
-    const sourceNode = workspace.getNode(parseInt(source));
-    const targetNode = workspace.getNode(parseInt(target));
-
-    // Look up schema metadata
-    const sourceSchema = nodeSchemas[sourceNode?.type];
-    const targetSchema = nodeSchemas[targetNode?.type];
-
-    const isVariableNode = sourceSchema?.category === "Variable";
-
-    if (isVariableNode && targetHandle) {
-      onVariableConnect(params);
-      return;
-    }
-
-    // Normal connection flow
-    const connectionType = sourceHandle || "default";
-
-    workspace.connectNodes(parseInt(source), parseInt(target), connectionType);
-
-    setEdges((eds = []) =>
-      addEdge(
-        {
-          ...params,
-          id: `${source}-${target}-${connectionType}`,
-          label: connectionType,
-          style: {
-            stroke: config.ui.link.color,
-            strokeWidth: config.ui.link.thickness,
-          },
-        },
-        eds
-      )
-    );
-  }, []);
-  function onVariableConnect(params) {
-    const { source, target, sourceHandle, targetHandle } = params;
-
-    const sourceNode = workspace.getNode(parseInt(source));
-    const targetNode = workspace.getNode(parseInt(target));
-    const targetSchema = nodeSchemas[targetNode?.type];
-    const targetField = targetSchema?.fields.find(
-      (f) => f.key === targetHandle
-    );
-
-    const typeMap = {
-      string: ["text", "textarea"],
-      number: ["number"],
-      boolean: ["select"],
-    };
-
-    const connectionType = sourceHandle || "default";
-    const isCompatible =
-      targetField && typeMap[connectionType]?.includes(targetField.type);
-
-    if (!isCompatible) return;
-
-    // Sync to backend
-    workspace.connectNodes(parseInt(source), parseInt(target), connectionType);
-
-    // Sync variable value into target field (frontend + backend)
-    const variableValue = sourceNode?.data?.value;
-    if (variableValue !== undefined) {
-      updateNodeFieldFrontend(target, targetField.key, variableValue);
-      workspace.updateNodeField(
-        parseInt(target),
-        targetField.key,
-        variableValue
-      );
-    }
-
-    setEdges((eds = []) =>
-      addEdge(
-        {
-          ...params,
-          sourceHandle, // ensure source handle is set
-          targetHandle, // ensure target handle is set
-          id: `${source}-${target}-${sourceHandle}-${targetHandle}`, // unique edge id
-          label: sourceHandle, // show type on edge
-          style: {
-            stroke: config.ui.link.color,
-            strokeWidth: config.ui.link.thickness,
-          },
-        },
-        eds
-      )
-    );
-  }
-
-  function updateNodeFieldFrontend(nodeId, fieldKey, newValue) {
+  // Update a specific field on a node in the frontend state
+  const updateNodeFieldFrontend = (nodeId, fieldKey, newValue) => {
     setNodes((nodes) =>
       nodes.map((node) => {
         if (node.id === String(nodeId)) {
@@ -204,52 +102,35 @@ export default function WorkflowPage() {
         return node;
       })
     );
-  }
-
-  // calculate position and add new node to reactflow workspace
-  const handleAddNode = (type) => {
-    const schema = nodeSchemas[type];
-
-    // Build default data from schema fields
-    const defaultData = Object.fromEntries(
-      schema.fields.map((f) => [f.key, f.options?.[0] || ""])
-    );
-
-    // Position must be an object for React Flow
-    const position = { x: Math.random() * 400, y: Math.random() * 400 };
-
-    // Add node to backend with new schema
-    const backendId = workspace.addNode(type, defaultData, position, {
-      inputs: [],
-      outputs: [],
-    });
-
-    // Build frontend node object consistent with React Flow
-    const newNode = {
-      id: `${backendId}`,
-      type: "custom",
-      data: {
-        label: `${schema.displayName} Node`,
-        type,
-        ...defaultData,
-        onChange: createOnChange(backendId),
-      },
-      position, // object {x, y}
-      connections: { inputs: [], outputs: [] }, // keep consistent with JSON schema
-    };
-
-    setNodes((nds) => [...nds, newNode]);
   };
 
-  // const handleImport = async () => {
-  //   const importedNodes = await workspace.loadMacroFromDialog();
-  //   if (!importedNodes.length) return;
-  //   workspace.clearWorkspace();
-  //   importedNodes.forEach((n) =>
-  //     workspace.addNode(n.type, n.data, n.position, n.connections)
-  //   );
-  //   updateSceneFromBackend();
-  // };
+  // React Flow callback when a node is dragged and released
+  const onNodeDragStop = useCallback(createNodeDragStopHandler(workspace), []);
+
+  //get changes from backend and update to frontend
+  const updateSceneFromBackend = () => {
+    const backendNodes = workspace.getAllNodes();
+    const frontendNodes = backendNodes.map((node) =>
+      convertToFrontendNode(node, createOnChange)
+    );
+
+    setNodes(frontendNodes);
+    setEdges([]);
+    const newEdges = convertToEdges(backendNodes);
+    setEdges(newEdges);
+  };
+
+  // Connection handler with type checking
+  const onConnect = useCallback(
+    createConnectHandler(workspace, setEdges, updateNodeFieldFrontend),
+    [setEdges]
+  );
+
+  // Node creation handler
+  const handleAddNode = useCallback(
+    createAddNodeHandler(workspace, setNodes, createOnChange),
+    []
+  );
 
   useEffect(() => {
     workspace.setSceneUpdater(updateSceneFromBackend);
@@ -277,7 +158,9 @@ export default function WorkflowPage() {
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            onNodeContextMenu={onNodeContextMenu}
             onConnect={onConnect}
+            onNodeDragStop={onNodeDragStop}
             nodeTypes={nodeTypes}
             fitView
             className="bg-[#1c1f26]"
@@ -286,6 +169,14 @@ export default function WorkflowPage() {
             <MiniMap nodeColor={() => "#00bcd4"} maskColor="#1c1f26" />
             <Controls />
           </ReactFlow>
+          {menuState.visible && (
+            <ContextMenu
+              nodeId={menuState.nodeId}
+              position={menuState.pos}
+              onClose={closeMenu}
+              updateScene={updateSceneFromBackend}
+            />
+          )}
 
           <FloatingBar actions={actions} />
         </div>
